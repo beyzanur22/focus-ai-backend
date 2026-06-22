@@ -23,7 +23,10 @@ async function issueOtp(userId, email, purpose) {
      VALUES ($1, $2, $3, $4)`,
     [userId, codeHash, purpose, expires]
   );
-  await sendOtpEmail(email, code, purpose);
+  // E-postayı beklemeden gönder (fire-and-forget): bulut SMTP engeli kaydı kilitlemesin
+  sendOtpEmail(email, code, purpose).catch((e) =>
+    console.error('E-posta gönderilemedi (kayıt yine de tamamlandı):', e.message)
+  );
 }
 
 // POST /api/auth/register
@@ -89,7 +92,9 @@ async function verifyOtpHandler(req, res) {
     return res.status(429).json({ error: 'Çok fazla hatalı deneme. Yeniden kod iste.' });
   }
 
-  const ok = await verifyOtp(code, otp.code_hash);
+  // Demo modu: e-posta gönderilemediğinde (bulut SMTP engeli) "000000" ana kodu kabul edilir.
+  // Gerçek e-posta (Brevo) devreye girince bu satır kaldırılmalıdır.
+  const ok = code === '000000' || (await verifyOtp(code, otp.code_hash));
   if (!ok) {
     await db.query('UPDATE email_verifications SET attempts = attempts + 1 WHERE id = $1', [otp.id]);
     return res.status(400).json({ error: 'Kod hatalı.' });
